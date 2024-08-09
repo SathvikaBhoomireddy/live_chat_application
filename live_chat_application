@@ -1,0 +1,145 @@
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.socket.config.annotation.EnableWebSocket;
+import org.springframework.web.socket.config.annotation.WebSocketConfigurer;
+import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry;
+
+@Configuration
+@EnableWebSocket
+public class WebSocketConfig implements WebSocketConfigurer {
+
+    @Override
+    public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
+        registry.addHandler(new ChatWebSocketHandler(), "/chat")
+                .setAllowedOrigins("*");
+    }
+}
+import org.springframework.web.socket.WebSocketSession;
+import org.springframework.web.socket.handler.TextWebSocketHandler;
+import org.springframework.web.socket.TextMessage;
+import org.springframework.web.socket.WebSocketMessage;
+
+public class ChatWebSocketHandler extends TextWebSocketHandler {
+
+    @Override
+    protected void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
+        // Handle incoming messages and broadcast to other clients
+        String payload = message.getPayload();
+        // Example: Encrypt and then send message
+        TextMessage encryptedMessage = new TextMessage(encryptMessage(payload));
+        session.sendMessage(encryptedMessage);
+    }
+
+    private String encryptMessage(String message) {
+        // Implement AES encryption here
+        return message; // Return encrypted message
+    }
+}
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+
+@Configuration
+@EnableWebSecurity
+public class SecurityConfig extends WebSecurityConfigurerAdapter {
+
+    @Override
+    protected void configure(HttpSecurity http) throws Exception {
+        http
+            .authorizeRequests()
+            .anyRequest().authenticated()
+            .and()
+            .formLogin().permitAll()
+            .and()
+            .logout().permitAll();
+    }
+
+    @Override
+    protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+        auth
+            .inMemoryAuthentication()
+            .withUser("user").password(passwordEncoder().encode("password")).roles("USER");
+    }
+
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
+}
+import javafx.application.Application;
+import javafx.scene.Scene;
+import javafx.scene.control.*;
+import javafx.scene.layout.VBox;
+import javafx.stage.Stage;
+import org.java_websocket.client.WebSocketClient;
+import org.java_websocket.handshake.ServerHandshake;
+
+import java.net.URI;
+
+public class ChatClient extends Application {
+
+    private WebSocketClient webSocketClient;
+
+    @Override
+    public void start(Stage primaryStage) {
+        VBox root = new VBox();
+        TextArea chatArea = new TextArea();
+        chatArea.setEditable(false);
+        TextField messageField = new TextField();
+        Button sendButton = new Button("Send");
+
+        sendButton.setOnAction(event -> {
+            String message = messageField.getText();
+            webSocketClient.send(message);
+            messageField.clear();
+        });
+
+        root.getChildren().addAll(chatArea, messageField, sendButton);
+
+        Scene scene = new Scene(root, 400, 300);
+        primaryStage.setTitle("Chat Client");
+        primaryStage.setScene(scene);
+        primaryStage.show();
+
+        connectToServer();
+    }
+
+    private void connectToServer() {
+        try {
+            URI uri = new URI("ws://localhost:8080/chat");
+            webSocketClient = new WebSocketClient(uri) {
+                @Override
+                public void onOpen(ServerHandshake handshakedata) {
+                    System.out.println("Connected to server");
+                }
+
+                @Override
+                public void onMessage(String message) {
+                    // Update chat area with new message
+                    // chatArea.appendText(message + "\n");
+                }
+
+                @Override
+                public void onClose(int code, String reason, boolean remote) {
+                    System.out.println("Disconnected from server");
+                }
+
+                @Override
+                public void onError(Exception ex) {
+                    ex.printStackTrace();
+                }
+            };
+            webSocketClient.connect();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static void main(String[] args) {
+        launch(args);
+    }
+}
